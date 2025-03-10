@@ -3,10 +3,11 @@ package go_cip
 import (
 	"bytes"
 	"fmt"
-	eip "github.com/loki-os/go-ethernet-ip"
-	"github.com/loki-os/go-ethernet-ip/typedef"
 	"log"
 	"reflect"
+
+	eip "github.com/teldio-operations/go-ethernet-ip"
+	"github.com/teldio-operations/go-ethernet-ip/typedef"
 )
 
 const ServiceReadTag = 0x4c

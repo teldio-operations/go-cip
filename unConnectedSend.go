@@ -2,8 +2,9 @@ package go_cip
 
 import (
 	"bytes"
-	eip "github.com/loki-os/go-ethernet-ip"
-	"github.com/loki-os/go-ethernet-ip/typedef"
+
+	eip "github.com/teldio-operations/go-ethernet-ip"
+	"github.com/teldio-operations/go-ethernet-ip/typedef"
 )
 
 type UnConnectedSend struct {

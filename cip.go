@@ -4,8 +4,9 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	eip "github.com/loki-os/go-ethernet-ip"
-	"github.com/loki-os/go-ethernet-ip/typedef"
+
+	eip "github.com/teldio-operations/go-ethernet-ip"
+	"github.com/teldio-operations/go-ethernet-ip/typedef"
 )
 
 type Controller struct {
