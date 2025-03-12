@@ -3,6 +3,7 @@ package go_cip
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"log"
 	"reflect"
 
@@ -106,24 +107,41 @@ type Tag struct {
 	Onchange   func()
 }
 
-func (t *Tag) Read() error {
-	data := new(bytes.Buffer)
-	eip.WriteByte(data, t.readCount)
-	mr := &eip.MessageRouterRequest{}
-	mr.New(ServiceReadTag, Paths(
-		LogicalBuild(LogicalTypeClassID, 0x6B, true),
-		LogicalBuild(LogicalTypeInstanceID, t.InstanceID, true),
-	), data.Bytes())
+const ReplyTooLarge typedef.Usint = 0x06
 
-	res, err := t.controller.UCMM(mr)
-	if err != nil {
-		return err
+func (t *Tag) Read() error {
+	generalStatus := ReplyTooLarge
+	nextOffset := uint32(0)
+
+	buf := new(bytes.Buffer)
+
+	for generalStatus == ReplyTooLarge {
+		data := new(bytes.Buffer)
+		eip.WriteByte(data, t.readCount)
+		eip.WriteByte(data, nextOffset)
+
+		mr := &eip.MessageRouterRequest{}
+		mr.New(ServiceReadFragmentedTag, Paths(
+			LogicalBuild(LogicalTypeClassID, 0x6B, true),
+			LogicalBuild(LogicalTypeInstanceID, t.InstanceID, true),
+		), data.Bytes())
+
+		res, err := t.controller.UCMM(mr)
+		if err != nil {
+			return err
+		}
+
+		frr := &eip.FragmentedReadResponse{}
+		frr.Decode(res.Packet.Items[1].Data, t.Type == 0xafce)
+
+		generalStatus = frr.GeneralStatus
+		nextOffset += uint32(len(frr.ResponseData))
+
+		buf.Write(frr.ResponseData)
 	}
 
-	mrres := &eip.MessageRouterResponse{}
-	mrres.Decode(res.Packet.Items[1].Data)
+	t.ReadParser(buf)
 
-	t.ReadParser(mrres)
 	return nil
 }
 
@@ -142,17 +160,9 @@ func (t *Tag) Write() error {
 	return err
 }
 
-func (t *Tag) ReadParser(mr *eip.MessageRouterResponse) {
-	dataReader := bytes.NewReader(mr.ResponseData)
-	_t := uint16(0)
-	eip.ReadByte(dataReader, &_t)
+func (t *Tag) ReadParser(buf *bytes.Buffer) {
 
-	if _t == 0x2a0 {
-		eip.ReadByte(dataReader, &_t)
-	}
-
-	payload := make([]byte, dataReader.Len())
-	eip.ReadByte(dataReader, payload)
+	payload := buf.Bytes()
 
 	if bytes.Compare(t.value, payload) != 0 {
 		t.value = payload
@@ -278,16 +288,35 @@ func (t *Tag) Value() interface{} {
 
 			// string
 			if xtp == 0xFCE {
-				val := make([]string, t.dim1Len)
+				vals := make([]string, t.dim1Len)
 
-				for i := range val {
-					_len := uint32(0)
-					eip.ReadByte(reader, &_len)
-					_val := make([]byte, 84)
-					eip.ReadByte(reader, &_val)
-					val[i] = string(_val[:_len])
+				for i := range vals {
+					var len uint32
+					eip.ReadByte(reader, &len)
+
+					val := make([]byte, len)
+					eip.ReadByte(reader, &val)
+
+					vals[i] = string(val)
+
+					if i == int(t.dim1Len)-1 {
+						break
+					}
+
+					// Skip null values to next string
+					for {
+						b, err := reader.ReadByte()
+						if err != nil {
+							return vals
+						}
+						if b != 0 {
+							reader.Seek(-1, io.SeekCurrent)
+							break
+						}
+					}
 				}
-				return val
+
+				return vals
 			}
 		}
 	case 2:
